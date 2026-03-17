@@ -17,6 +17,10 @@ develop-eggs/
 dist/
 downloads/
 eggs/
+data/
+audiocraft_runs/
+hf_model/
+
 .eggs/
 lib/
 lib64/
@@ -52,7 +56,7 @@ egs/*
 # local datasets
 dataset/*
 !dataset/example
-
+.idea
 # personal notebooks & scripts
 */local_scripts
 */notes

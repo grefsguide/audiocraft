@@ -52,6 +52,14 @@ class MusicInfo(AudioInfo):
     self_wav: tp.Optional[WavCondition] = None
     # dict mapping attributes names to tuple of wav, text and metadata
     joint_embed: tp.Dict[str, JointEmbedCondition] = field(default_factory=dict)
+    # new fields
+    general_mood: tp.Optional[str] = None
+    genre_tags: tp.Optional[tp.List[str]] = None
+    lead_instrument: tp.Optional[str] = None
+    accompaniment: tp.Optional[str] = None
+    tempo_and_rhythm: tp.Optional[str] = None
+    vocal_presence: tp.Optional[str] = None
+    production_quality: tp.Optional[str] = None
 
     @property
     def has_music_meta(self) -> bool:
@@ -78,6 +86,17 @@ class MusicInfo(AudioInfo):
             preprocess_func = get_bpm
         elif attribute == 'key':
             preprocess_func = get_musical_key
+        elif attribute in ["genre_tags"]:
+            return get_keyword_list
+        elif attribute in [
+            "general_mood",
+            "lead_instrument",
+            "accompaniment",
+            "tempo_and_rhythm",
+            "vocal_presence",
+            "production_quality",
+        ]:
+            return get_string
         elif attribute in ['moods', 'keywords']:
             preprocess_func = get_keyword_list
         elif attribute in ['genre', 'name', 'instrument']:
@@ -95,7 +114,12 @@ class MusicInfo(AudioInfo):
         # allow a subset of attributes to not be loaded from the dictionary
         # these attributes may be populated later
         post_init_attributes = ['self_wav', 'joint_embed']
-        optional_fields = ['keywords']
+        optional_fields = [
+            'title', 'artist', 'key', 'bpm', 'genre', 'moods',
+            'keywords', 'name', 'instrument', 'general_mood',
+            'genre_tags', 'lead_instrument', 'accompaniment',
+            'tempo_and_rhythm', 'vocal_presence', 'production_quality'
+        ]
 
         for _field in fields(cls):
             if _field.name in post_init_attributes:
@@ -129,7 +153,13 @@ def augment_music_info_description(music_info: MusicInfo, merge_text_p: float = 
         MusicInfo: The MusicInfo with augmented textual description.
     """
     def is_valid_field(field_name: str, field_value: tp.Any) -> bool:
-        valid_field_name = field_name in ['key', 'bpm', 'genre', 'moods', 'instrument', 'keywords']
+        valid_field_name = field_name in [
+            'key', 'bpm', 'genre', 'moods', 'instrument', 'keywords',
+            'general_mood', 'genre_tags', 'lead_instrument', 'accompaniment',
+            'tempo_and_rhythm', 'vocal_presence', 'production_quality'
+        ]
+        if isinstance(field_value, list):
+            field_value = ", ".join(map(str, field_value))
         valid_field_value = field_value is not None and isinstance(field_value, (int, float, str, list))
         keep_field = random.uniform(0, 1) < drop_other_p
         return valid_field_name and valid_field_value and keep_field
@@ -226,6 +256,9 @@ class MusicDataset(InfoAudioDataset):
             with open(music_info_path, 'r') as json_file:
                 music_data = json.load(json_file)
                 music_data.update(info_data)
+                music_data.setdefault("title", Path(info.meta.path).stem)
+                music_data.setdefault("artist", "unknown")
+                music_data.setdefault("name", "unknown")
                 music_info = MusicInfo.from_dict(music_data, fields_required=self.info_fields_required)
             if self.paraphraser is not None:
                 music_info.description = self.paraphraser.sample(music_info.meta.path, music_info.description)

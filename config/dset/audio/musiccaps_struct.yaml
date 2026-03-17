@@ -1,0 +1,9 @@
+# @package __global__
+
+datasource:
+  max_sample_rate: 32000
+  max_channels: 1
+  train: egs/musiccaps_struct/train
+  valid: egs/musiccaps_struct/valid
+  evaluate: egs/musiccaps_struct/valid
+  generate: egs/musiccaps_struct/valid

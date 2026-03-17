@@ -20,7 +20,12 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from torch.utils.checkpoint import checkpoint as torch_checkpoint
-from xformers import ops
+try:
+    from xformers import ops
+    _xformers_available = True
+except Exception:
+    ops = None
+    _xformers_available = False
 
 from .rope import RotaryEmbedding
 from .streaming import StreamingModule
@@ -371,7 +376,10 @@ class StreamingMultiheadAttention(StreamingModule):
                     else:
                         bound_layout = "b t p h d"
                     packed = rearrange(projected, f"b t (p h d) -> {bound_layout}", p=3, h=self.num_heads)
-                    q, k, v = ops.unbind(packed, dim=2)
+                    if ops is not None:
+                        q, k, v = ops.unbind(packed, dim=2)
+                    else:
+                        q, k, v = packed.unbind(dim=2)
                 else:
                     embed_dim = self.embed_dim
                     per_head_dim = (embed_dim // self.num_heads)

@@ -51,7 +51,7 @@ class MusicGen(BaseGenModel):
     def __init__(self, name: str, compression_model: CompressionModel, lm: LMModel,
                  max_duration: tp.Optional[float] = None):
         super().__init__(name, compression_model, lm, max_duration)
-        self.set_generation_params(duration=15)  # default duration
+        self.set_generation_params(duration=10, extend_stride=9)
 
     @staticmethod
     def get_pretrained(name: str = 'facebook/musicgen-melody', device=None):
