@@ -1,92 +1,399 @@
-# AudioCraft
-![docs badge](https://github.com/facebookresearch/audiocraft/workflows/audiocraft_docs/badge.svg)
-![linter badge](https://github.com/facebookresearch/audiocraft/workflows/audiocraft_linter/badge.svg)
-![tests badge](https://github.com/facebookresearch/audiocraft/workflows/audiocraft_tests/badge.svg)
+# Fine-tuning MusicGen on Structured MusicCaps
 
-AudioCraft is a PyTorch library for deep learning research on audio generation. AudioCraft contains inference and training code
-for two state-of-the-art AI generative models producing high-quality audio: AudioGen and MusicGen.
+This repository contains a full pipeline for fine-tuning **MusicGen** with **structured metadata** built from the **MusicCaps** dataset
+
+The project includes:
+
+- raw audio download from MusicCaps / YouTube
+- caption enrichment with an LLM through OpenRouter
+- deterministic train/valid split building
+- AudioCraft fine-tuning
+- model export to Hugging Face
+- prompt-based inference
+- experiment logging to Comet ML
+
+For experiment notes, difficulties, chosen hyperparameters, and reporting guidance, see [SUMMARY.md](docs/SUMMARY.md)
+
+This project was tested on:
+
+- Windows 11
+- Python 3.9.13
+- PyTorch + CUDA
+- ffmpeg
+- yt-dlp
+- 64 GB RAM
+- RTX 3080Ti 16 GB VRAM
+
+You can see the generation result by prompts in: `data/gen_sound`
+### Table of contents
+
+1. [Environment](#1-environment)
+2. [Data preparation](#2-data-preparation) 
+   * [Download a prepared dataset](#21-download-a-prepared-dataset)
+   * [Build the dataset from scratch](#22-build-the-dataset-from-scratch)
+3. [Training](#3-training)
+4. [Log the run to CometML](#4-log-the-run-to-cometml)
+5. [Export model to Hugging Face](#5-export-model-to-hugging-face)
+6. [Generate audio from structured prompts](#6-generate-audio-from-structured-prompts)
+7. [Recommended run order](#7-recommended-run-order)
 
 
-## Installation
-AudioCraft requires Python 3.9, PyTorch 2.1.0. To install AudioCraft, you can run the following:
+---
+## 1. Environment
 
-```shell
-# Best to make sure you have torch installed first, in particular before installing xformers.
-# Don't run this if you already have PyTorch installed.
-python -m pip install 'torch==2.1.0'
-# You might need the following before trying to install the packages
-python -m pip install setuptools wheel
-# Then proceed to one of the following
-python -m pip install -U audiocraft  # stable release
-python -m pip install -U git+https://git@github.com/facebookresearch/audiocraft#egg=audiocraft  # bleeding edge
-python -m pip install -e .  # or if you cloned the repo locally (mandatory if you want to train).
-python -m pip install -e '.[wm]'  # if you want to train a watermarking model
+### Windows
+Create and activate a virtual environment:
+```ps1
+py -3.9 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip setuptools wheel
 ```
+Install PyTorch with CUDA:
 
-We also recommend having `ffmpeg` installed, either through your system or Anaconda:
+```ps1
+python -m pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+```
+Install project dependencies:
+```ps1
+python -m pip install av==12.2.0 einops flashy hydra-core hydra_colorlog julius num2words numpy<2.0.0 sentencepiece spacy==3.7.6 huggingface_hub tqdm transformers>=4.31.0 librosa soundfile torchmetrics encodec protobuf torchdiffeq datasets yt-dlp requests orjson tensorboard comet_ml
+python -m pip install -e . --no-deps
+```
+### Linux
+Recommended for a cleaner setup than Windows
+
+Create and activate a virtual environment:
 ```bash
-sudo apt-get install ffmpeg
-# Or if you are using Anaconda or Miniconda
-conda install "ffmpeg<5" -c conda-forge
+python3.9 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+```
+Install ffmpeg:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ffmpeg
+```
+Install PyTorch:
+```bash
+python -m pip install torch==2.1.0 torchvision torchaudio
 ```
 
-## Models
-
-At the moment, AudioCraft contains the training code and inference code for:
-* [MusicGen](./docs/MUSICGEN.md): A state-of-the-art controllable text-to-music model.
-* [AudioGen](./docs/AUDIOGEN.md): A state-of-the-art text-to-sound model.
-* [EnCodec](./docs/ENCODEC.md): A state-of-the-art high fidelity neural audio codec.
-* [Multi Band Diffusion](./docs/MBD.md): An EnCodec compatible decoder using diffusion.
-* [MAGNeT](./docs/MAGNET.md): A state-of-the-art non-autoregressive model for text-to-music and text-to-sound.
-* [AudioSeal](./docs/WATERMARKING.md): A state-of-the-art audio watermarking.
-* [MusicGen Style](./docs/MUSICGEN_STYLE.md): A state-of-the-art text-and-style-to-music model.
-* [JASCO](./docs/JASCO.md): "High quality text-to-music model conditioned on chords, melodies and drum tracks"
-
-
-## Training code
-
-AudioCraft contains PyTorch components for deep learning research in audio and training pipelines for the developed models.
-For a general introduction of AudioCraft design principles and instructions to develop your own training pipeline, refer to
-the [AudioCraft training documentation](./docs/TRAINING.md).
-
-For reproducing existing work and using the developed training pipelines, refer to the instructions for each specific model
-that provides pointers to configuration, example grids and model/task-specific information and FAQ.
-
-
-## API documentation
-
-We provide some [API documentation](https://facebookresearch.github.io/audiocraft/api_docs/audiocraft/index.html) for AudioCraft.
-
-
-## FAQ
-
-#### Is the training code available?
-
-Yes! We provide the training code for [EnCodec](./docs/ENCODEC.md), [MusicGen](./docs/MUSICGEN.md),[Multi Band Diffusion](./docs/MBD.md) and [JASCO](./docs/JASCO.md).
-
-#### Where are the models stored?
-
-Hugging Face stored the model in a specific location, which can be overridden by setting the `AUDIOCRAFT_CACHE_DIR` environment variable for the AudioCraft models.
-In order to change the cache location of the other Hugging Face models, please check out the [Hugging Face Transformers documentation for the cache setup](https://huggingface.co/docs/transformers/installation#cache-setup).
-Finally, if you use a model that relies on Demucs (e.g. `musicgen-melody`) and want to change the download location for Demucs, refer to the [Torch Hub documentation](https://pytorch.org/docs/stable/hub.html#where-are-my-downloaded-models-saved).
-
-
-## License
-* The code in this repository is released under the MIT license as found in the [LICENSE file](LICENSE).
-* The models weights in this repository are released under the CC-BY-NC 4.0 license as found in the [LICENSE_weights file](LICENSE_weights).
-
-
-## Citation
-
-For the general framework of AudioCraft, please cite the following.
+Install project dependencies:
+```bash
+python -m pip install -e .
+python -m pip install comet_ml datasets yt-dlp requests
 ```
-@inproceedings{copet2023simple,
-    title={Simple and Controllable Music Generation},
-    author={Jade Copet and Felix Kreuk and Itai Gat and Tal Remez and David Kant and Gabriel Synnaeve and Yossi Adi and Alexandre Défossez},
-    booktitle={Thirty-seventh Conference on Neural Information Processing Systems},
-    year={2023},
-}
-```
+---
+## 2. Data preparation
+You can either:
 
-When referring to a specific model, please cite as mentioned in the model specific README, e.g
-[./docs/MUSICGEN.md](./docs/MUSICGEN.md), [./docs/AUDIOGEN.md](./docs/AUDIOGEN.md), etc.
+1. download a prepared archive into `data/`
+2. build the dataset from scratch
+
+### 2.1 Download a prepared dataset
+You can skip the full dataset build and download a prepared archive from Google Drive directly into `data/`
+
+Google Drive archive:
+- https://drive.google.com/file/d/1KGR8f2D5NyOEVeMVEzov3rRtcYzaMbHA/view?usp=sharing
+
+Install `gdown` and download:
+#### Windows
+```ps1
+python -m pip install gdown
+New-Item -ItemType Directory -Force -Path data | Out-Null
+gdown --id 1KGR8f2D5NyOEVeMVEzov3rRtcYzaMbHA -O data\musiccaps_struct.zip
+Expand-Archive "data\musiccaps_struct.zip" -DestinationPath "data" -Force
+```
+#### Linux
+```bash
+python -m pip install gdown
+mkdir -p data
+gdown --id 1KGR8f2D5NyOEVeMVEzov3rRtcYzaMbHA -O data/musiccaps_struct.zip
+unzip -o data/musiccaps_struct.zip -d data
+```
+### 2.2 Build the dataset from scratch
+#### Step 1. Download 10-sec clips and source json
+##### Windows
+```ps1
+python scripts/finetune/download_musiccaps.py `
+  --out_dir data/raw `
+  --yt_dlp_path "<YOUR PATH TO yt-dlp.exe>" `
+  --cookies_file "<YOUR PATH TO cookies.txt>" `
+  --js_runtimes "deno:<YOUR PATH TO deno.exe>" `
+  --ffmpeg_path <YOUR PATH TO ffmpeg.exe>" `
+  --max_workers 4
+```
+##### Linux
+```bash
+python scripts/finetune/download_musiccaps.py \
+  --out_dir data/raw \
+  --yt_dlp_path "$(which yt-dlp)" \
+  --cookies_file "<YOUR PATH TO cookies.txt>" \
+  --js_runtimes "deno" \
+  --ffmpeg_path "$(which ffmpeg)" \
+  --max_workers 4 
+```
+#### Step 2. Enrich captions with structured metadata
+##### Windows
+```ps1
+python scripts/finetune/musiccaps_openrouter.py `
+  --data_root data/raw `
+  --api_key <OPENROUTER_API_KEY> `
+  --model <OPENROUTER_MODEL_ID> `
+  --max_workers 4
+```
+##### Linux
+```bash
+python scripts/finetune/musiccaps_openrouter.py \
+  --data_root data/raw \
+  --api_key <OPENROUTER_API_KEY> \
+  --model <OPENROUTER_MODEL_ID> \
+  --max_workers 4
+```
+#### Step 3. Build train/valid split
+##### Windows
+```ps1
+python scripts/finetune/build_split.py `
+  --src_root data/raw `
+  --dst_root data/musiccaps_struct `
+  --valid_pct 20 # This parameter is responsible for the proportion of valid (train/val)
+```
+##### Linux
+```bash
+python scripts/finetune/build_split.py \
+  --src_root data/raw \
+  --dst_root data/musiccaps_struct \
+  --valid_pct 20 # This parameter is responsible for the proportion of valid (train/val)
+```
+#### Step 4. Create AudioCraft manifests
+```bash
+python -m audiocraft.data.audio_dataset data/musiccaps_struct/train egs/musiccaps_struct/train/data.jsonl.gz
+python -m audiocraft.data.audio_dataset data/musiccaps_struct/valid egs/musiccaps_struct/valid/data.jsonl.gz
+```
+---
+## 3. Training
+### Windows
+Set environment variables:
+```ps1
+$env:USER = $env:USERNAME
+$env:AUDIOCRAFT_TEAM = "default"
+$env:AUDIOCRAFT_CLUSTER = "default"
+$env:AUDIOCRAFT_DORA_DIR = "$PWD\audiocraft_runs"
+$env:COMET_API_KEY = "<COMET_API_KEY>"
+$env:COMET_WORKSPACE = "<COMET_WORKSPACE>"
+$env:COMET_PROJECT_NAME = "musicgen-finetune"
+```
+Run training:
+```ps1
+dora run `
+  solver=musicgen/musicgen_base_32khz `
+  dset=audio/musiccaps `
+  conditioner=text2music `
+  model/lm/model_scale=small `
+  continue_from=//pretrained/facebook/musicgen-small `
+  mp_start_method=spawn `
+  efficient_attention_backend=torch `
+  transformer_lm.custom=true `
+  transformer_lm.memory_efficient=false `
+  transformer_lm.checkpointing=none `
+  dataset.num_workers=0 `
+  dataset.batch_size=4 `
+  dataset.segment_duration=10 `
+  dataset.min_segment_ratio=0.95 `
+  dataset.valid.num_samples=100 `
+  dataset.generate.num_samples=4 `
+  optim.lr=1e-5 `
+  optim.epochs=20 `
+  optim.updates_per_epoch=100 `
+  deadlock.use=false `
+  generate.every=999 `
+  evaluate.every=999
+```
+Configs:
+- `config/conditioner/text2music_struct.yaml`
+```yaml
+# @package __global__
+
+classifier_free_guidance:
+  training_dropout: 0.3
+  inference_coef: 3.0
+
+attribute_dropout: {}
+
+fuser:
+  cross_attention_pos_emb: false
+  cross_attention_pos_emb_scale: 1
+  sum: []
+  prepend: []
+  cross: [description]
+  input_interpolate: []
+
+conditioners:
+  description:
+    model: t5
+    t5:
+      name: t5-base
+      finetune: false
+      word_dropout: 0.3
+      normalize_text: false
+
+dataset:
+  train:
+    merge_text_p: 0.7
+    drop_desc_p: 0.1
+    drop_other_p: 0.5
+```
+- `config/dset/audio/musiccaps_struct.yaml`
+```yaml
+# @package __global__
+
+datasource:
+  max_sample_rate: 32000
+  max_channels: 1
+  train: egs/musiccaps_struct/train
+  valid: egs/musiccaps_struct/valid
+  evaluate: egs/musiccaps_struct/valid
+  generate: egs/musiccaps_struct/valid
+```
+### Linux
+It's the same run, without the Windows-specific workarounds:
+```bash
+export AUDIOCRAFT_TEAM=default
+export AUDIOCRAFT_DORA_DIR=$PWD/audiocraft_runs
+export COMET_API_KEY=<COMET_API_KEY>
+export COMET_WORKSPACE=<COMET_WORKSPACE>
+export COMET_PROJECT_NAME=musicgen-finetune
+```
+Run training:
+```bash
+dora run \
+  solver=musicgen/musicgen_base_32khz \
+  dset=audio/musiccaps \
+  conditioner=text2music \
+  model/lm/model_scale=small \
+  continue_from=//pretrained/facebook/musicgen-small \
+  dataset.batch_size=4 \
+  dataset.segment_duration=10 \
+  dataset.min_segment_ratio=0.95 \
+  dataset.valid.num_samples=100 \
+  dataset.generate.num_samples=4 \
+  optim.lr=1e-5 \
+  optim.epochs=20 \
+  optim.updates_per_epoch=100 \
+  generate.every=999 \
+  evaluate.every=999
+```
+Training artifacts are stored in:
+`audiocraft_runs/xps/<SIG>/`
+---
+## 4. Log the run to CometML
+After training finishes:
+### Windows
+```ps1
+python scripts/finetune/train_log_cometml.py `
+  --sig <SIG> `
+  --project_name <YOUR COMET PROJECT NAME> `
+  --workspace <COMET_WORKSPACE> `
+  --run_name <YOUR RUN NAME>
+```
+### Linux
+```bash
+python scripts/finetune/train_log_cometml.py \
+  --sig <SIG> \
+  --project_name <YOUR COMET PROJECT NAME> \
+  --workspace <COMET_WORKSPACE> \
+  --run_name <YOUR RUN NAME>
+```
+---
+## 5. Export model to Hugging Face
+### Windows
+```ps1
+python scripts/finetune/export_hf.py `
+  --sig <SIG> `
+  --repo_id <HF_USERNAME>/<HF_REPO_NAME> `
+  --out_dir hf_model/<YOUR MODEL NAME>
+```
+### Linux
+```bash
+python scripts/finetune/export_hf.py \
+  --sig <SIG> \
+  --repo_id <HF_USERNAME>/<HF_REPO_NAME> \
+  --out_dir hf_model/<YOUR MODEL NAME>
+```
+## 6. Generate audio from structured prompts
+Prepare the prompt file:
+`data/gen_sound/prompts.json`
+Expected format:
+```json
+[
+  {
+    "description": "...",
+    "general_mood": "...",
+    "genre_tags": ["...", "..."],
+    "lead_instrument": "...",
+    "accompaniment": "...",
+    "tempo_and_rhythm": "...",
+    "vocal_presence": "...",
+    "production_quality": "..."
+  },
+  ...
+]
+```
+Generate audio:
+### Windows
+```ps1
+python scripts/finetune/generate_audio.py `
+  --model_path hf_model/<YOUR MODEL NAME> `
+  --prompts_json data/gen_sound/prompts.json `
+  --out_dir data/gen_sound `
+  --prefix "test" ` # example: "testprompt_1.wav"
+  --top_k 250 `
+  --cfg_coef 3.0 `
+  --top_p 0.0 `
+  --temp 1.0 ` # temperature
+  --duration 10 `
+  --num_variants 1
+```
+### Linux
+```bash
+python scripts/finetune/generate_audio.py \
+  --model_path hf_model/<YOUR MODEL NAME> \
+  --prompts_json data/gen_sound/prompts.json \
+  --out_dir data/gen_sound \
+  --prefix "test" \ # example: "testprompt_1.wav"
+  --top_k 250 \ 
+  --cfg_coef 3.0 \
+  --top_p 0.0 \
+  --temp 1.0 \ # temperature
+  --duration 10 \
+  --num_variants 1
+```
+Expected outputs:
+```text
+data/gen_sound/prompt_1.wav
+...
+data/gen_sound/prompt_n.wav
+```
+---
+## 7. Recommended run order
+If you start from scratch:
+```text
+1. scripts/finetune/download_musiccaps.py
+2. scripts/finetune/musiccaps_openrouter.py
+3. scripts/finetune/build_split.py
+4. python -m audiocraft.data.audio_dataset ...
+5. dora run ...
+6. scripts/finetune/train_log_cometml.py
+7. scripts/finetune/export_hf.py
+8. scripts/finetune/generate_audio.py
+```
+If you wanna download dataset from link:
+```text
+1. Download/extract archive into data/
+2. scripts/finetune/build_split.py
+3. python -m audiocraft.data.audio_dataset ...
+4. dora run ...
+5. scripts/finetune/train_log_cometml.py
+6. scripts/finetune/export_hf.py
+7. scripts/finetune/generate_audio.py
+```

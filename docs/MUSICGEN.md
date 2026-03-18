@@ -28,7 +28,7 @@ See [the model card](../model_cards/MUSICGEN_MODEL_CARD.md).
 
 ## Installation
 
-Please follow the AudioCraft installation instructions from the [README](../README.md).
+Please follow the AudioCraft installation instructions from the [README](README.md).
 
 AudioCraft requires a GPU with at least 16 GB of memory for running inference with the medium-sized models (~1.5B parameters).
 
@@ -151,7 +151,7 @@ We provide a dummy dataset containing just a few examples for illustrative purpo
 Please read first the [TRAINING documentation](./TRAINING.md), in particular the Environment Setup section.
 
 
-**Warning:** As of version 1.1.0, a few breaking changes were introduced. Check the [CHANGELOG.md](../CHANGELOG.md)
+**Warning:** As of version 1.1.0, a few breaking changes were introduced. Check the [CHANGELOG.md](CHANGELOG.md)
 file for more information. You might need to retrain some of your models.
 
 ### Example configurations and grids

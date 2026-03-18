@@ -56,7 +56,7 @@ egs/*
 # local datasets
 dataset/*
 !dataset/example
-.idea
+.idea/
 # personal notebooks & scripts
 */local_scripts
 */notes
@@ -64,3 +64,9 @@ dataset/*
 /notebooks
 /local_scripts
 /notes
+
+!data/gen_sound/prompt_1.wav
+!data/gen_sound/prompt_2.wav
+!data/gen_sound/prompt_3.wav
+!data/gen_sound/prompt_4.wav
+!data/gen_sound/prompt_5.wav
