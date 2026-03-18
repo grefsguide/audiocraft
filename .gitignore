@@ -17,7 +17,7 @@ develop-eggs/
 dist/
 downloads/
 eggs/
-data/
+
 audiocraft_runs/
 hf_model/
 
@@ -65,6 +65,8 @@ dataset/*
 /local_scripts
 /notes
 
+data/*
+!data/gen_sound/prompts.json
 !data/gen_sound/prompt_1.wav
 !data/gen_sound/prompt_2.wav
 !data/gen_sound/prompt_3.wav
